@@ -1,7 +1,7 @@
 import re
 
 
-token = []
+token = None
 users_list = []
 text_channels = []
 
@@ -10,13 +10,15 @@ def print_asd():
     print("asd")
 
 
+def get_attributes():
+    return token, users_list, text_channels
+
+
 def distribute_data(data_type, content):
+    global token
 
     if data_type == "TOKEN":
-        try:
-            token.append(content)
-        except ValueError:
-            print(f"Error. TOKEN value in  settings = {content}, can no append this to list")
+        token = str(content)
 
     elif data_type == "USER_ID":
         try:
@@ -31,7 +33,7 @@ def distribute_data(data_type, content):
             print(f"TEXT_CHANNEL_ID should be integer, instead of = {content}")
 
 
-def parse_settins_file(debug=False):
+def parse_settings_file(debug=False):
     f = open("settings.txt", encoding="utf-8", mode="r")
 
     for line in f:
@@ -66,4 +68,4 @@ def parse_settins_file(debug=False):
 
 
 if __name__ == '__main__':
-    parse_settins_file(debug=True)
+    parse_settings_file(debug=True)

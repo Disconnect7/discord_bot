@@ -4,23 +4,84 @@ import random
 import my_file_parser as fp
 from discord.ext import commands
 
-
-
-client = commands.Bot(command_prefix='!')
+# region variables declaration
 repost_delay_s = 10
+
+token = None
+trusted_users = []
+channels_to_repost = []
+
 message_history_list = []
 
+client = commands.Bot(command_prefix='!', intents=discord.Intents.all())
 
+# endregion
 
-# region рабочие методы
+# region commands
 
+# region for channel manipulation ___________________________
 
 @client.command(name="тык")
 async def tik(ctx):
-    await ctx.send("!тык")\
+    await ctx.send("!тык")
+
+    await asyncio.sleep()
 
 
-@client.command(name="delete")
+@client.command(name="show")
+async def f(ctx):
+    """выводит список доступных каналов для репоста"""
+
+    await respond_to_message(ctx, response=f"Список серверов и каналов"
+                                           f" для щитпостинга:")
+    await show_text_channels(ctx)
+
+
+@client.command(name="exclude")
+async def f(ctx, *args):
+
+    global channels_to_repost
+
+    def get_channels_obj_from_args(args):
+        tmp = []
+
+
+        for index_str in args:
+            try:
+                tmp.append(channels_to_repost[int(index_str)])
+            except IndexError:
+                #если нет такого индекса - слакаем
+                pass
+        """
+        int_args = [int(el) for el in args]
+        exclude_list = [channels_to_repost[i] for i in int_args]
+        return exclude_list
+        """
+
+        return tmp
+
+    exclude = get_channels_obj_from_args(args)
+
+    channels_to_repost = [el for el in channels_to_repost
+                          if el not in exclude]
+
+    await show_text_channels(ctx)
+
+
+@client.command(name="refresh")
+async def f(ctx):
+    """сбрасывает настройки каналов для репоста до базовых"""
+    reset_settings()
+    await show_text_channels(ctx)
+    print(channels_to_repost)
+
+
+# endregion
+
+# region for repost and delete ______________________________
+
+
+@client.command(name="delete")  # remove
 async def clear_function(ctx, number_of_messages_to_delete=None):
     n = number_of_messages_to_delete
 
@@ -39,11 +100,12 @@ async def clear_function(ctx, number_of_messages_to_delete=None):
         await ctx.author.send(f"!delete command was executed for 4 last indexes")
 
 
+# union with on message event and then remove
 @client.command(name="repost")
 async def repost(ctx):
     """
         репостит сообщение во все каналы из channels_to_repost
-        кроме того, а котором написано !repost...
+        кроме того, в котором была вызвана эта команда !repost...
 
         (что бы не присылать мем на сервер с которого его стырил)
     """
@@ -68,11 +130,11 @@ async def repost(ctx):
                 except:
                     pass
 
-        await message.author.send(f"message reposted to {c} "
-                                  f"channels by !repost command")
+        await respond_to_author_of_message(message, response=f"message reposted to {c} "
+                                                             f"channels by !repost command")
 
     else:
-        await respond_to(message, response=f'Вашего ID нет в моём списке '
+        await respond_to_message(message, response=f'Вашего ID нет в моём списке '
                                            f'допущенных к щитпостингу')
 
 
@@ -100,7 +162,7 @@ async def on_message(message):
 
     if trusted_author(message) and is_DM:
 
-        await respond_to(message, response=f"через 10 секунд будет репост")
+        await respond_to_message(message, response=f"через 10 секунд будет репост")
         await asyncio.sleep(10)
         c = 0
 
@@ -115,10 +177,10 @@ async def on_message(message):
             except:
                 await respond_with_error(message, channel, channel_id)
 
-        await respond_to(message, response=f'message reposted to {c} channels')
+        await respond_to_message(message, response=f'message reposted to {c} channels')
 
     elif (not trusted_author and is_DM):
-        await respond_to(message, response=f'Вашего ID нет в моём списке '
+        await respond_to_message(message, response=f'Вашего ID нет в моём списке '
                                      f'допущенных к щитпостингу' )
 
     # передать сообщение парсеру комманд, иначе on_message()
@@ -127,10 +189,67 @@ async def on_message(message):
 
 # endregion
 
-#region вспомогательные методы
+# endregion
+
+# region вспомогательные методы
+
+
+def exclude_channel(index):
+    """убирает из channels_to_repost канал с выбраным индексом"""
+    removed_channel = channels_to_repost.pop(index)
+
+
+async def show_text_channels(message):
+    """выводит список доступных каналов для репоста"""
+
+
+    for i in range(len(channels_to_repost)):
+
+        channel = client.get_channel(channels_to_repost[i])
+        channel_name = channel.name
+
+        guild = channel.guild
+
+        response = f"_{i}_: {str(guild)}, {channel_name}"
+
+        await respond_to_message(message, response)
+
+
+def reset_settings():
+    """
+    восстанавливаем настройки из settings.txt
+
+    - список каналов для репоста
+    - список юзеов, которые могут репостить
+    - токен нашего бота
+
+    использовать после init_my_file_parser()
+    """
+
+    global trusted_users
+    global channels_to_repost
+    global token
+
+    token, trusted_users, channels_to_repost = fp.get_attributes()
+
+
+def init_my_file_parser():
+    """
+    читаем настройик из settings.txt
+    вызывать ___строго___ один раз
+    """
+
+    global trusted_users
+    global channels_to_repost
+    global token
+
+    fp.parse_settings_file()
+    token, trusted_users, channels_to_repost = fp.get_attributes()
 
 
 def trusted_author(message):
+    """проверяем, находится ли отправитель _message_ в trusted_users"""
+
     author = message.author.id
 
     if author in trusted_users:
@@ -139,74 +258,49 @@ def trusted_author(message):
         return False
 
 
-def repost_message_in_all_unmuted_channals():
-    """
-    repost messages,
-    and add a list of  [ms1, ms2, ms3 ...] in the end of message_history_list
-
-    bebebe be bebebebe
-    """
-    pass
-
-def show_list_of_servers_to_repost():
-    """
-    print numbered list of "unmuted" servers/channels
-    {repost_message_in_all_unmuted_channals}
-
-    (in which ones can repost messages now)
-    """
-    pass
-
-async def respond_to(message, response):
-    # отправляет сообщение {response} в канал где находится {message}
+async def respond_to_message(message, response):
+    """отправляет сообщение {response} в канал где находится {message}"""
     await message.channel.send(response)
+
+
+async def respond_to_author_of_message(message, response):
+    await message.author.send(response)
 
 
 async def respond_with_error(message, channel, channel_id):
     # просто упаковка большого и бесполезного кода в отдельную функцию
 
     try:
-        await respond_to(message, response=f"Error: can't send to: "
+        await respond_to_message(message, response=f"Error: can't send to: "
                                            f"'{channel.guild}   --->   {channel}' channel")
     except:
-        await respond_to(message, response=f"Error: can't send to: "
+        await respond_to_message(message, response=f"Error: can't send to: "
                                            f"'{channel}' channel with id = {channel_id}")
 
 
 def is_ZUM(message):
     # ZUM from GAYBAR guild 270184210944229381
-    if message.author.id == 270184210944229381:
+    # SRONGLAV from GAYBAR guild 982698692740001792
+    if message.author.id == 982698692740001792:
         return True
     else:
         return False
 
 
-
 async def bully_ZUM(message):
-    if random.random() < 0.13:
-        await respond_to(message, response=f"Зум - Пидрила опять опозорился")
+    if random.random() < 0.064:
+        await respond_to_message(message, response=f"Сронглав - лошара, опять опозорился")
 
 
-#endregion
+# endregion
 
 # region настройка и запуск бота
-
 
 @client.event
 async def on_ready():
     print('We have logged in as {0.user}'.format(client))
 
-
-# достаём токен, полльзователей, и текстовые каналы из файла с настройками
-fp.parse_settins_file()
-
-
-trusted_users =      fp.users_list
-channels_to_repost = fp.text_channels
-token =              fp.token[0]
-
-# запускаем бота
+init_my_file_parser()
 client.run(token)
-
 
 # endregion
